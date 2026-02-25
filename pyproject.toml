@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "upflame-ago"
+version = "0.1.0"
+description = "Open-Source Artificial General Operator Foundation Model"
+authors = [
+    {name = "UpFlame Labs", email = "info@upflamelabs.com"},
+]
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "Apache-2.0"}
+dependencies = [
+    "torch>=2.3.0,<2.4.0",
+    "transformers>=4.43.0,<4.44.0",
+    "deepspeed>=0.14.0,<0.15.0",
+    "flash-attn>=2.5.0,<2.6.0; sys_platform != 'darwin'",
+    "accelerate>=0.33.0,<0.34.0",
+    "ray[rllib]>=2.10.0,<2.11.0",
+    "trl>=0.9.0,<0.10.0",
+    "sentencepiece>=0.2.0,<0.3.0",
+    "vllm>=0.5.0,<0.6.0; sys_platform != 'darwin'",
+    "fastapi>=0.112.0,<0.113.0",
+    "uvicorn>=0.30.0",
+    "pydantic>=2.0.0",
+    "qdrant-client>=1.9.0",
+    "redis>=5.0.0",
+    "einops>=0.8.0",
+    "typer>=0.12.0",
+    "wandb>=0.17.0"
+]
+
+[project.scripts]
+train-tokenizer = "upflame_ago.tokenizer.train_tokenizer:main"
+train-pretrain = "upflame_ago.training.pretrain:main"
+train-rl = "upflame_ago.training.rl.ppo:main"
+orchestrator = "upflame_ago.orchestrator.orchestrator:main"
+inference-server = "upflame_ago.inference.server:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["upflame_ago*"]
