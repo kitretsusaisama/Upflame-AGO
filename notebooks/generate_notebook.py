@@ -311,6 +311,9 @@ cell_4_code = {
         "        self.n_kv_heads = args.n_heads if args.n_kv_heads is None else args.n_kv_heads\n",
         "        self.n_heads = args.n_heads\n",
         "        self.n_rep = self.n_heads // self.n_kv_heads\n",
+        "        # Validation for GQA\n",
+        "        assert args.n_heads % self.n_kv_heads == 0, f\"n_heads ({args.n_heads}) must be divisible by n_kv_heads ({self.n_kv_heads})\"\n",
+        "        \n",
         "        self.head_dim = args.dim // args.n_heads\n",
         "\n",
         "        self.wq = nn.Linear(args.dim, args.n_heads * self.head_dim, bias=False)\n",
@@ -491,6 +494,7 @@ cell_5_code = {
         "        for item in self.data:\n",
         "            # Add EOS token\n",
         "            tokens = self.tokenizer.encode(item['text'])\n",
+        "            tokens.append(self.tokenizer.eos_id()) # Explicitly add EOS token\n",
         "            buffer.extend(tokens)\n",
         "            \n",
         "            # Yield chunks\n",
@@ -692,7 +696,8 @@ cell_11_code = {
         "    print(\"Forward pass successful. Output shape:\", logits.shape)\n",
         "    \n",
         "    del model_2B\n",
-        "    torch.cuda.empty_cache()\n",
+        "    if device == 'cuda':\n",
+        "        torch.cuda.empty_cache()\n",
         "except Exception as e:\n",
         "    print(f\"2B Validation Failed (Expected on T4 if OOM): {e}\")"
     ]
@@ -740,10 +745,14 @@ cell_12_code = {
         "config_100M = get_config(\"100M\", device)\n",
         "model_infer = GPTModel(config_100M).to(device)\n",
         "try:\n",
-        "    model_infer.load_state_dict(torch.load(\"checkpoint_100M.pt\"))\n",
-        "    print(\"Loaded 100M Checkpoint\")\n",
-        "except:\n",
-        "    print(\"Checkpoint not found, using random weights\")\n",
+        "    # Explicitly map to current device to avoid CUDA/CPU mismatch\n",
+        "    state_dict = torch.load(\"checkpoint_100M.pt\", map_location=device)\n",
+        "    model_infer.load_state_dict(state_dict)\n",
+        "    print(\"✅ Loaded 100M Checkpoint successfully\")\n",
+        "except FileNotFoundError:\n",
+        "    print(\"⚠️ Checkpoint 'checkpoint_100M.pt' not found. Inference will use RANDOM WEIGHTS.\")\n",
+        "except Exception as e:\n",
+        "    print(f\"❌ Failed to load checkpoint: {e}. Inference will use RANDOM WEIGHTS.\")\n",
         "\n",
         "prompt = \"The future of AI is\"\n",
         "generated_text = generate(model_infer, sp, prompt)\n",
@@ -777,53 +786,59 @@ cell_13_code = {
 
 # --- Assemble Notebook ---
 
-notebook_structure = {
-    "cells": [
-        cell_1_markdown, cell_1_code,
-        cell_2_markdown, cell_2_code,
-        cell_3_markdown, cell_3_code,
-        cell_4_markdown, cell_4_code,
-        cell_5_markdown, cell_5_code,
-        cell_6_markdown, cell_6_code,
-        cell_7_markdown,
-        cell_7_code,
-        cell_8_code,
-        cell_9_code,
-        cell_10_code,
-        cell_11_code,
-        cell_12_markdown, cell_12_code,
-        cell_13_code
-    ],
-    "metadata": {
-        "colab": {
-            "name": "UpFlame Progressive Scaling 100M to 2B",
-            "provenance": []
-        },
-        "kernelspec": {
-            "display_name": "Python 3",
-            "language": "python",
-            "name": "python3"
-        },
-        "language_info": {
-            "codemirror_mode": {
-                "name": "ipython",
-                "version": 3
+def main():
+    notebook_structure = {
+        "cells": [
+            cell_1_markdown, cell_1_code,
+            cell_2_markdown, cell_2_code,
+            cell_3_markdown, cell_3_code,
+            cell_4_markdown, cell_4_code,
+            cell_5_markdown, cell_5_code,
+            cell_6_markdown, cell_6_code,
+            cell_7_markdown,
+            cell_7_code,
+            cell_8_code,
+            cell_9_code,
+            cell_10_code,
+            cell_11_code,
+            cell_12_markdown, cell_12_code,
+            cell_13_code
+        ],
+        "metadata": {
+            "colab": {
+                "name": "UpFlame Progressive Scaling 100M to 2B",
+                "provenance": []
             },
-            "file_extension": ".py",
-            "mimetype": "text/x-python",
-            "name": "python",
-            "nbconvert_exporter": "python",
-            "pygments_lexer": "ipython3",
-            "version": "3.10.12"
-        }
-    },
-    "nbformat": 4,
-    "nbformat_minor": 2
-}
+            "kernelspec": {
+                "display_name": "Python 3",
+                "language": "python",
+                "name": "python3"
+            },
+            "language_info": {
+                "codemirror_mode": {
+                    "name": "ipython",
+                    "version": 3
+                },
+                "file_extension": ".py",
+                "mimetype": "text/x-python",
+                "name": "python",
+                "nbconvert_exporter": "python",
+                "pygments_lexer": "ipython3",
+                "version": "3.10.12"
+            }
+        },
+        "nbformat": 4,
+        "nbformat_minor": 2
+    }
 
-# Write to file
-output_file = "notebooks/upflame_progressive_scaling_100M_to_2B.ipynb"
-with open(output_file, "w") as f:
-    json.dump(notebook_structure, f, indent=2)
+    # Write to file (Relative to script location)
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    output_file = os.path.join(script_dir, "upflame_progressive_scaling_100M_to_2B.ipynb")
 
-print(f"Successfully generated notebook at: {output_file}")
+    with open(output_file, "w") as f:
+        json.dump(notebook_structure, f, indent=2)
+
+    print(f"Successfully generated notebook at: {output_file}")
+
+if __name__ == "__main__":
+    main()
