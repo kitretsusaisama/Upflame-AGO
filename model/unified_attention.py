@@ -20,11 +20,18 @@ class UnifiedAttentionBlock(nn.Module):
         self.hidden_size = config.hidden_size
 
         # 1. & 3. Local + Infini Attention
-        # InfiniAttention handles both local sliding window and long-term compressed state
-        self.attention = InfiniAttention(config, layer_idx)
+        self.use_infini_attention = config.use_infini_attention
+        if self.use_infini_attention:
+            self.attention = InfiniAttention(config, layer_idx)
+        else:
+            from .attention import UpFlameAGOAttention
+            self.attention = UpFlameAGOAttention(config, layer_idx)
 
         # 4. Vector Memory Attention
-        self.vector_attn = VectorMemoryAttention(config)
+        if config.use_vector_memory:
+            self.vector_attn = VectorMemoryAttention(config)
+        else:
+            self.vector_attn = None
 
         # 5. World State Attention (Simplified as Cross Attention to World State)
         if config.use_world_state:
@@ -32,15 +39,23 @@ class UnifiedAttentionBlock(nn.Module):
         else:
             self.world_state_attn = None
 
-        # Feed Forward (MoE)
-        self.moe = MoELayer(config)
+        # Feed Forward (MoE vs Standard)
+        self.use_moe = config.use_moe
+        if self.use_moe:
+            self.feed_forward = MoELayer(config)
+        else:
+            from .moe_layer import ExpertLayer
+            self.feed_forward = ExpertLayer(config) # Acts as standard MLP when MoE is disabled
 
         self.input_layernorm = UpFlameAGORMSNorm(config.hidden_size, eps=config.rms_norm_eps)
         self.post_attention_layernorm = UpFlameAGORMSNorm(config.hidden_size, eps=config.rms_norm_eps)
         self.pre_moe_layernorm = UpFlameAGORMSNorm(config.hidden_size, eps=config.rms_norm_eps)
 
         # Memory Compression Layer
-        self.memory_compression = MemoryCompression(config)
+        if config.use_vector_memory or config.use_infini_attention:
+            self.memory_compression = MemoryCompression(config)
+        else:
+            self.memory_compression = None
 
     def forward(
         self,
@@ -58,19 +73,28 @@ class UnifiedAttentionBlock(nn.Module):
         residual = hidden_states
         hidden_states = self.input_layernorm(hidden_states)
 
-        # Unified Attention (Infini + Local)
-        # Note: InfiniAttention manages its own KV cache and memory state
-        attn_output, attn_weights, present_key_value = self.attention(
-            hidden_states,
-            attention_mask,
-            position_ids,
-            past_key_value,
-            output_attentions,
-            use_cache
-        )
+        # Unified Attention (Infini + Local vs Standard)
+        if self.use_infini_attention:
+            attn_output, attn_weights, present_key_value = self.attention(
+                hidden_states,
+                attention_mask,
+                position_ids,
+                past_key_value,
+                output_attentions,
+                use_cache
+            )
+        else:
+            attn_output, attn_weights, present_key_value = self.attention(
+                hidden_states=hidden_states,
+                attention_mask=attention_mask,
+                position_ids=position_ids,
+                past_key_value=past_key_value,
+                output_attentions=output_attentions,
+                use_cache=use_cache
+            )
 
         # Vector Memory Injection
-        if vector_memory is not None:
+        if self.vector_attn is not None and vector_memory is not None:
             vec_out = self.vector_attn(hidden_states, vector_memory)
             attn_output = attn_output + vec_out
 
@@ -83,10 +107,15 @@ class UnifiedAttentionBlock(nn.Module):
 
         hidden_states = residual + attn_output
 
-        # MoE Feed Forward
+        # Feed Forward
         residual = hidden_states
         hidden_states = self.pre_moe_layernorm(hidden_states)
-        hidden_states, router_logits = self.moe(hidden_states)
+
+        if self.use_moe:
+            hidden_states, router_logits = self.feed_forward(hidden_states)
+        else:
+            hidden_states = self.feed_forward(hidden_states)
+
         hidden_states = residual + hidden_states
 
         # Memory Compression & Update (Side effect or return)
