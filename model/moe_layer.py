@@ -5,9 +5,11 @@ import torch.nn.functional as F
 class ExpertLayer(nn.Module):
     def __init__(self, config):
         super().__init__()
-        self.w1 = nn.Linear(config.hidden_size, config.expert_intermediate_size, bias=False)
-        self.w2 = nn.Linear(config.expert_intermediate_size, config.hidden_size, bias=False)
-        self.w3 = nn.Linear(config.hidden_size, config.expert_intermediate_size, bias=False)
+        # Use intermediate_size if expert_intermediate_size is not explicitly provided
+        intermediate_dim = config.expert_intermediate_size if hasattr(config, "expert_intermediate_size") and config.expert_intermediate_size else config.intermediate_size
+        self.w1 = nn.Linear(config.hidden_size, intermediate_dim, bias=False)
+        self.w2 = nn.Linear(intermediate_dim, config.hidden_size, bias=False)
+        self.w3 = nn.Linear(config.hidden_size, intermediate_dim, bias=False)
 
     def forward(self, x):
         return self.w2(F.silu(self.w1(x)) * self.w3(x))

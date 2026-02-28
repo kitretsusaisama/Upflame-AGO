@@ -120,9 +120,13 @@ def main():
 
     
     # 3. Initialize Model Config (Disabling Advanced Features for Week 1 Colab)
+    # Automatically compute standard intermediate_size if not specified in scaling.yaml to prevent defaults (11008) blowing up small models
+    intermediate_size = preset.get("intermediate_size", preset["hidden_size"] * 4)
+
     model_config = UpFlameAGOUnifiedConfig(
         vocab_size=vocab_size,
         hidden_size=preset["hidden_size"],
+        intermediate_size=intermediate_size,
         num_hidden_layers=preset["layers"],
         num_attention_heads=preset["heads"],
         num_key_value_heads=preset["heads"] // 2 if preset["heads"] % 2 == 0 else preset["heads"], # GQA or standard
