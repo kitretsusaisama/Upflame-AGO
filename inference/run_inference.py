@@ -57,18 +57,15 @@ def main():
     else:
         preset = scaling_configs[scale]
 
-    print(f"Initializing architecture for scale: {scale}")
+    print(f"Initializing architecture for scale: {scale} in Baseline Mode")
+    UpFlameAGOUnifiedConfig.USE_ADVANCED = False
     model_config = UpFlameAGOUnifiedConfig(
         vocab_size=32000,
         hidden_size=preset["hidden_size"],
         num_hidden_layers=preset["layers"],
         num_attention_heads=preset["heads"],
         num_key_value_heads=preset["heads"] // 2 if preset["heads"] % 2 == 0 else preset["heads"],
-        max_position_embeddings=preset["context"],
-        use_moe=False,
-        use_infini_attention=False,
-        use_vector_memory=False,
-        use_world_state=False
+        max_position_embeddings=preset["context"]
     )
 
     model = UnifiedTransformer(model_config).to(device)

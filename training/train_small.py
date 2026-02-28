@@ -81,20 +81,19 @@ def main():
     print(f"Layers: {preset['layers']}, Hidden Size: {preset['hidden_size']}, Heads: {preset['heads']}, Context: {context_len}")
 
     # 2. Initialize Model Config (Disabling Advanced Features for Week 1 Colab)
+    # Use the global toggle built into the config class
+    UpFlameAGOUnifiedConfig.USE_ADVANCED = False
+
     model_config = UpFlameAGOUnifiedConfig(
         vocab_size=32000,
         hidden_size=preset["hidden_size"],
         num_hidden_layers=preset["layers"],
         num_attention_heads=preset["heads"],
         num_key_value_heads=preset["heads"] // 2 if preset["heads"] % 2 == 0 else preset["heads"], # GQA or standard
-        max_position_embeddings=context_len,
-        use_moe=False, # DISABLED FOR COLAB BASELINE
-        use_infini_attention=False, # DISABLED FOR COLAB BASELINE
-        use_vector_memory=False, # DISABLED FOR COLAB BASELINE
-        use_world_state=False # DISABLED FOR COLAB BASELINE
+        max_position_embeddings=context_len
     )
 
-    print("Initializing UnifiedTransformer in Baseline Mode...")
+    print("Initializing UnifiedTransformer in Baseline Mode (Advanced features globally disabled)...")
     model = UnifiedTransformer(model_config).to(device)
 
     if args.validate_only:
