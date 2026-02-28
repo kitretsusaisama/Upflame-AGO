@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import logging
 from typing import Optional, Tuple, List, Union
 from transformers import PreTrainedModel
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
@@ -9,14 +10,22 @@ from .unified_attention import UnifiedAttentionBlock
 from .policy_head import PolicyHead, ToolHead, MemoryWriteHead
 from .transformer import UpFlameAGORMSNorm
 
+logger = logging.getLogger(__name__)
+
 class UnifiedTransformer(PreTrainedModel):
+    """
+    UpFlame-AGO Unified Transformer Base Architecture.
+    Implements dynamic scaling, MoE logic, and MNC-grade stability across multi-device configurations.
+    """
     config_class = UpFlameAGOUnifiedConfig
     base_model_prefix = "unified_transformer"
 
     def __init__(self, config: UpFlameAGOUnifiedConfig):
         super().__init__(config)
         self.config = config
-        self.padding_idx = config.pad_token_id
+
+        # Ensure padding_idx is safely handled (defaults to 0 if not provided)
+        self.padding_idx = config.pad_token_id if config.pad_token_id is not None else 0
         self.vocab_size = config.vocab_size
 
         self.embed_tokens = nn.Embedding(config.vocab_size, config.hidden_size, self.padding_idx)
@@ -28,13 +37,15 @@ class UnifiedTransformer(PreTrainedModel):
 
         self.norm = UpFlameAGORMSNorm(config.hidden_size, eps=config.rms_norm_eps)
 
-        # Heads
+        # Output Heads
         self.policy_head = PolicyHead(config)
         self.tool_head = ToolHead(config)
         self.memory_write_head = MemoryWriteHead(config)
 
         self.gradient_checkpointing = False
         self.post_init()
+
+        logger.info(f"Initialized UnifiedTransformer: {self.vocab_size} vocab | {config.num_hidden_layers} layers | padding_idx {self.padding_idx}")
 
     def get_input_embeddings(self):
         return self.embed_tokens
