@@ -11,7 +11,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from model.unified_config import UpFlameAGOUnifiedConfig
 from model.unified_transformer import UnifiedTransformer
-from datasets import load_dataset
+from datasets import load_dataset, interleave_datasets
 from torch.utils.data import DataLoader, IterableDataset
 
 # Simple dummy tokenizer for Colab baseline if real one isn't trained yet
@@ -34,7 +34,22 @@ class TokenizedDataset(IterableDataset):
     def __iter__(self):
         buffer = []
         for item in self.data:
-            tokens = self.tokenizer.encode(item['text'])
+            # Handle different dataset structures (wikitext uses 'text', some code datasets use 'content' or 'instruction'/'output')
+            text = item.get('text', '')
+            if not text:
+                text = item.get('content', '')
+            if not text:
+                instruction = item.get('instruction', '')
+                inp = item.get('input', '')
+                output = item.get('output', '')
+
+                parts = [instruction, inp, output]
+                text = "\n".join([str(p).strip() for p in parts if p])
+
+            if not text.strip():
+                continue
+
+            tokens = self.tokenizer.encode(text)
             tokens.append(self.tokenizer.eos_id)
             buffer.extend(tokens)
             
@@ -51,11 +66,26 @@ def main():
     parser.add_argument("--cpu_mode", action="store_true", help="Force CPU training mode with reduced context/batch size")
     parser.add_argument("--validate_only", action="store_true", help="Only build model and run one forward pass (for 2B testing)")
     parser.add_argument("--max_steps", type=int, default=100, help="Number of training steps")
+    parser.add_argument("--use_wandb", action="store_true", help="Enable tracking with Weights & Biases")
     
     args = parser.parse_args()
 
-    device = "cpu" if args.cpu_mode or not torch.cuda.is_available() else "cuda"
-    print(f"Using device: {device}")
+    # Device detection logic
+    if args.cpu_mode:
+        device = "cpu"
+        print("⚠️ No GPU detected. CPU fallback mode will be engaged.")
+    else:
+        try:
+            import torch_xla.core.xla_model as xm
+            device = xm.xla_device()
+            print(f"✅ TPU Detected: {device}")
+        except ImportError:
+            if torch.cuda.is_available():
+                device = "cuda"
+                print(f"✅ GPU Detected: {torch.cuda.get_device_name(0)}")
+            else:
+                device = "cpu"
+                print("⚠️ No GPU detected. CPU fallback mode will be engaged.")
 
     # 1. Load Scaling Config
     config_path = os.path.join(os.path.dirname(__file__), "..", "configs", "scaling.yaml")
@@ -128,8 +158,12 @@ def main():
     # 4. Setup Data Pipeline
     tokenizer = DummyTokenizer()
     try:
-        print("Loading wikitext-2 dataset...")
-        dataset = load_dataset("wikitext", "wikitext-2-v1", split="train")
+        print("Loading wikitext-2 (language) and CodeAlpaca (coding) datasets...")
+        lang_dataset = load_dataset("wikitext", "wikitext-2-v1", split="train")
+        code_dataset = load_dataset("HuggingFaceH4/CodeAlpaca_20K", split="train")
+        # Interleave datasets to mix language and code
+        dataset = interleave_datasets([lang_dataset, code_dataset])
+        print("✅ Datasets loaded successfully.")
     except Exception as e:
         print(f"Failed to load dataset: {e}. Ensure you have internet access.")
         return
@@ -139,6 +173,26 @@ def main():
     train_iter = iter(train_loader)
 
     # 5. Training Loop
+    if args.use_wandb:
+        try:
+            import wandb
+            wandb.init(
+                project="upflame-ago-training",
+                name=f"baseline-{args.scale}-{device}",
+                config={
+                    "scale": args.scale,
+                    "device": device,
+                    "max_steps": args.max_steps,
+                    "batch_size": batch_size,
+                    "context_len": context_len,
+                    "grad_accum_steps": grad_accum_steps
+                }
+            )
+            print("✅ Weights & Biases initialized.")
+        except ImportError:
+            print("⚠️ wandb is not installed. Run `pip install wandb` to use tracking. Proceeding without wandb.")
+            args.use_wandb = False
+
     print(f"Starting training for {args.max_steps} steps...")
     scaler = torch.cuda.amp.GradScaler(enabled=(device == "cuda"))
     model.train()
@@ -179,18 +233,33 @@ def main():
         scaler.step(optimizer)
         scaler.update()
         
+        if device == "tpu":
+            import torch_xla.core.xla_model as xm
+            xm.mark_step()
+
         logs.append({"step": step, "loss": loss_accum})
-        
+        if args.use_wandb:
+            wandb.log({"loss": loss_accum, "step": step})
+
         if step % 10 == 0:
             print(f"Step {step}/{args.max_steps} | Loss: {loss_accum:.4f}")
 
     # Save Checkpoint and Logs
     ckpt_path = f"checkpoints/{args.scale}/model.pt"
     torch.save(model.state_dict(), ckpt_path)
-    print(f"✅ Training complete. Checkpoint saved to {ckpt_path}")
+
+    # Prominent completion notification with terminal beep
+    print("\a") # Terminal beep
+    print("=" * 50)
+    print(f"🎉 TRAINING COMPLETE! 🎉")
+    print(f"✅ Checkpoint successfully saved to: {ckpt_path}")
+    print("=" * 50)
     
     with open(f"logs/scaling_{args.scale}.json", "w") as f:
         json.dump(logs, f)
+
+    if args.use_wandb:
+        wandb.finish()
 
 if __name__ == "__main__":
     main()

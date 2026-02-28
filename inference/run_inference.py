@@ -36,8 +36,17 @@ def main():
     parser.add_argument("--temperature", type=float, default=0.7, help="Generation temperature")
     args = parser.parse_args()
 
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    print(f"Using device: {device}")
+    try:
+        import torch_xla.core.xla_model as xm
+        device = xm.xla_device()
+        print(f"✅ TPU Detected: {device}")
+    except ImportError:
+        if torch.cuda.is_available():
+            device = "cuda"
+            print(f"✅ GPU Detected: {torch.cuda.get_device_name(0)}")
+        else:
+            device = "cpu"
+            print("⚠️ No GPU detected. CPU fallback mode will be engaged.")
 
     # Determine scale from checkpoint path
     scale = os.path.basename(os.path.normpath(args.checkpoint))
