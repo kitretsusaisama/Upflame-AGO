@@ -7,7 +7,9 @@ import string
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--input_file", type=str, default="tokenizer_training_data.txt", help="Path to training data")
-    parser.add_argument("--model_prefix", type=str, default="upflame_ago_tokenizer", help="Output model prefix")
+    # Force default prefix to save exactly adjacent to this script in the tokenizer folder
+    default_prefix = os.path.join(os.path.dirname(__file__), "upflame_ago_tokenizer")
+    parser.add_argument("--model_prefix", type=str, default=default_prefix, help="Output model prefix")
     parser.add_argument("--vocab_size", type=int, default=65536, help="Vocabulary size")
     args = parser.parse_args()
 

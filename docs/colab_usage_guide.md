@@ -21,7 +21,16 @@ UpFlame-AGO is built with a highly modular, MNC-grade (Multinational Corporation
 
 Open a new Google Colab notebook and ensure your runtime is set to GPU (T4).
 
-### Step 1: Clone the Repository
+### Step 1: Mount Google Drive (Recommended for Persistent Storage)
+Colab instances are ephemeral. To ensure your trained tokenizer models, checkpoints, and logs are saved persistently (read/write access), mount your Google Drive before doing anything else:
+
+```python
+from google.colab import drive
+drive.mount('/content/drive')
+```
+*Note: You can choose to clone the repo directly into your Drive (`/content/drive/MyDrive/Upflame-AGO`) or just symlink/copy your outputs there later.*
+
+### Step 2: Clone the Repository
 Clone the repository directly into the Colab environment.
 
 ```python
@@ -29,7 +38,7 @@ Clone the repository directly into the Colab environment.
 %cd Upflame-AGO
 ```
 
-### Step 2: Safe Dependency Installation
+### Step 3: Safe Dependency Installation
 UpFlame-AGO uses `pyproject.toml`. However, to prevent Colab environment conflicts, use this granular installation method:
 
 ```python
@@ -58,7 +67,7 @@ except ImportError:
     # !pip install -q bitsandbytes
 ```
 
-### Step 3: Verify Hardware
+### Step 4: Verify Hardware
 Confirm your hardware is accessible. This logic correctly identifies TPUs or GPUs and falls back to CPU natively.
 
 ```python
@@ -100,7 +109,11 @@ Before starting language model training, you must train your own native tokenize
 ```bash
 !python tokenizer/train_tokenizer.py
 ```
-*This script will safely generate synthetic token data and build an exact vocabulary optimized for the UpFlame-AGO architecture.*
+
+*Optional Drive Sync:* If you mounted your Google Drive, copy the trained tokenizer to it so it persists between sessions:
+```bash
+!cp tokenizer/upflame_ago_tokenizer.model /content/drive/MyDrive/upflame_ago_tokenizer.model
+```
 
 ---
 
@@ -115,6 +128,11 @@ Run a quick test to ensure the data pipeline and model compile correctly.
 !python training/train_small.py --scale 100M --use_wandb
 ```
 *Outputs checkpoint to: `checkpoints/100M/`*
+
+*To save this to Google Drive after training finishes:*
+```bash
+!cp -r checkpoints/100M /content/drive/MyDrive/upflame_checkpoints/
+```
 
 ### Day 2: Scale to 300M
 Increase capacity. The script will automatically handle gradient accumulation.
