@@ -24,7 +24,7 @@ class DummyTokenizer:
 
     def encode(self, text):
         return [hash(w) % self.vocab_size for w in text.split()]
-        
+
     def decode(self, token_ids):
         return " ".join([self.vocab.get(tid, f"<unk_{tid}>") for tid in token_ids])
 
@@ -41,7 +41,7 @@ def main():
 
     # Determine scale from checkpoint path
     scale = os.path.basename(os.path.normpath(args.checkpoint))
-    
+
     # 1. Load Config
     config_path = os.path.join(os.path.dirname(__file__), "..", "configs", "scaling.yaml")
     try:
@@ -90,22 +90,22 @@ def main():
     # 3. Generate
     print(f"\nPrompt: '{args.prompt}'")
     print("Generating...")
-    
+
     input_ids = torch.tensor([tokenizer.encode(args.prompt)], dtype=torch.long).to(device)
 
     for _ in range(args.max_new_tokens):
         with torch.no_grad():
             outputs = model(input_ids=input_ids, return_dict=True)
             next_token_logits = outputs.logits[:, -1, :] / args.temperature
-            
+
             # Simple Top-K
             top_k = 40
             v, _ = torch.topk(next_token_logits, top_k)
             next_token_logits[next_token_logits < v[:, [-1]]] = -float('Inf')
-            
+
             probs = torch.nn.functional.softmax(next_token_logits, dim=-1)
             next_token = torch.multinomial(probs, num_samples=1)
-            
+
             input_ids = torch.cat((input_ids, next_token), dim=1)
 
     generated_text = tokenizer.decode(input_ids[0].tolist())

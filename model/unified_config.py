@@ -6,6 +6,9 @@ class UpFlameAGOUnifiedConfig(PretrainedConfig):
     USE_ADVANCED = True
 
 
+    # Global toggle for disabling advanced components (useful for Colab baselines)
+    USE_ADVANCED = True
+
     def __init__(
         self,
         vocab_size=65536,
@@ -39,6 +42,7 @@ class UpFlameAGOUnifiedConfig(PretrainedConfig):
         use_world_state=True,
         **kwargs,
     ):
+
         # Override advanced features if global toggle is disabled
         if not self.__class__.USE_ADVANCED:
             use_moe = False

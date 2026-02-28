@@ -13,20 +13,20 @@ def main():
         return
 
     plt.figure(figsize=(10, 6))
-    
+
     files_found = False
     for filename in os.listdir(args.log_dir):
         if filename.startswith("scaling_") and filename.endswith(".json"):
             scale_name = filename.replace("scaling_", "").replace(".json", "")
             filepath = os.path.join(args.log_dir, filename)
-            
+
             try:
                 with open(filepath, "r") as f:
                     logs = json.load(f)
-                
+
                 steps = [entry["step"] for entry in logs]
                 losses = [entry["loss"] for entry in logs]
-                
+
                 plt.plot(steps, losses, label=f"Scale: {scale_name}")
                 files_found = True
             except Exception as e:
@@ -41,7 +41,7 @@ def main():
     plt.title("Progressive Scaling: Loss vs Steps")
     plt.legend()
     plt.grid(True)
-    
+
     output_path = "scaling_plot.png"
     plt.savefig(output_path)
     print(f"✅ Plot saved to {output_path}")

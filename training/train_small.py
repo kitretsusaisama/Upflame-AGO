@@ -37,7 +37,7 @@ class TokenizedDataset(IterableDataset):
             tokens = self.tokenizer.encode(item['text'])
             tokens.append(self.tokenizer.eos_id)
             buffer.extend(tokens)
-            
+
             while len(buffer) >= self.max_seq_len + 1:
                 chunk = buffer[:self.max_seq_len + 1]
                 buffer = buffer[self.max_seq_len + 1:]
@@ -51,7 +51,7 @@ def main():
     parser.add_argument("--cpu_mode", action="store_true", help="Force CPU training mode with reduced context/batch size")
     parser.add_argument("--validate_only", action="store_true", help="Only build model and run one forward pass (for 2B testing)")
     parser.add_argument("--max_steps", type=int, default=100, help="Number of training steps")
-    
+
     args = parser.parse_args()
 
     device = "cpu" if args.cpu_mode or not torch.cuda.is_available() else "cuda"
@@ -79,24 +79,23 @@ def main():
 
     print(f"--- Configuration for {args.scale} ---")
     print(f"Layers: {preset['layers']}, Hidden Size: {preset['hidden_size']}, Heads: {preset['heads']}, Context: {context_len}")
-    
+
     # 2. Initialize Model Config (Disabling Advanced Features for Week 1 Colab)
+    # Use the global toggle built into the config class
+    UpFlameAGOUnifiedConfig.USE_ADVANCED = False
+
     model_config = UpFlameAGOUnifiedConfig(
         vocab_size=32000,
         hidden_size=preset["hidden_size"],
         num_hidden_layers=preset["layers"],
         num_attention_heads=preset["heads"],
         num_key_value_heads=preset["heads"] // 2 if preset["heads"] % 2 == 0 else preset["heads"], # GQA or standard
-        max_position_embeddings=context_len,
-        use_moe=False, # DISABLED FOR COLAB BASELINE
-        use_infini_attention=False, # DISABLED FOR COLAB BASELINE
-        use_vector_memory=False, # DISABLED FOR COLAB BASELINE
-        use_world_state=False # DISABLED FOR COLAB BASELINE
+        max_position_embeddings=context_len
     )
 
-    print("Initializing UnifiedTransformer in Baseline Mode...")
+    print("Initializing UnifiedTransformer in Baseline Mode (Advanced features globally disabled)...")
     model = UnifiedTransformer(model_config).to(device)
-    
+
     if args.validate_only:
         print("Validation Mode: Running single forward pass...")
         dummy_input = torch.randint(0, 32000, (1, 128)).to(device)
@@ -106,7 +105,7 @@ def main():
             print(f"✅ Forward pass successful. Output shape: {outputs.logits.shape}")
         except Exception as e:
             print(f"❌ Validation failed: {e}")
-        
+
         del model
         if device == "cuda":
             torch.cuda.empty_cache()
@@ -142,10 +141,10 @@ def main():
     print(f"Starting training for {args.max_steps} steps...")
     scaler = torch.cuda.amp.GradScaler(enabled=(device == "cuda"))
     model.train()
-    
+
     logs = []
     start_time = time.time()
-    
+
     # Ensure checkpoint and log directories exist
     os.makedirs(f"checkpoints/{args.scale}", exist_ok=True)
     os.makedirs("logs", exist_ok=True)
@@ -153,34 +152,34 @@ def main():
     for step in range(args.max_steps):
         optimizer.zero_grad()
         loss_accum = 0.0
-        
+
         for _ in range(grad_accum_steps):
             try:
                 x, y = next(train_iter)
             except StopIteration:
                 train_iter = iter(train_loader)
                 x, y = next(train_iter)
-                
+
             x, y = x.to(device), y.to(device)
-            
+
             with torch.cuda.amp.autocast(enabled=(device == "cuda")):
                 # UnifiedTransformer returns a CausalLMOutputWithPast or tuple
                 outputs = model(input_ids=x, return_dict=True)
                 logits = outputs.logits
-                
+
                 # Manual cross entropy loss calculation
                 # x and y are already shifted in TokenizedDataset
                 loss = torch.nn.functional.cross_entropy(logits.view(-1, logits.size(-1)), y.view(-1))
                 loss = loss / grad_accum_steps
-                
+
             scaler.scale(loss).backward()
             loss_accum += loss.item()
-            
+
         scaler.step(optimizer)
         scaler.update()
-        
+
         logs.append({"step": step, "loss": loss_accum})
-        
+
         if step % 10 == 0:
             print(f"Step {step}/{args.max_steps} | Loss: {loss_accum:.4f}")
 
@@ -188,7 +187,7 @@ def main():
     ckpt_path = f"checkpoints/{args.scale}/model.pt"
     torch.save(model.state_dict(), ckpt_path)
     print(f"✅ Training complete. Checkpoint saved to {ckpt_path}")
-    
+
     with open(f"logs/scaling_{args.scale}.json", "w") as f:
         json.dump(logs, f)
 
