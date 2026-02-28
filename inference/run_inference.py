@@ -7,26 +7,14 @@ import yaml
 # Ensure we can import the package
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
+import logging
+from transformers import AutoTokenizer
+
 from model.unified_config import UpFlameAGOUnifiedConfig
 from model.unified_transformer import UnifiedTransformer
 
-# Simple dummy tokenizer matchin train_small.py
-class DummyTokenizer:
-    def __init__(self, vocab_size=32000):
-        self.vocab_size = vocab_size
-        self.eos_id = 2
-        self.pad_id = 0
-        # Invert mapping for decoding demo
-        self.vocab = {i: f"token_{i}" for i in range(vocab_size)}
-        # Basic common words hack for demo readability
-        for word in ["The", "future", "of", "open", "source", "AI", "is", "bright"]:
-            self.vocab[hash(word) % self.vocab_size] = word
-
-    def encode(self, text):
-        return [hash(w) % self.vocab_size for w in text.split()]
-        
-    def decode(self, token_ids):
-        return " ".join([self.vocab.get(tid, f"<unk_{tid}>") for tid in token_ids])
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+logger = logging.getLogger(__name__)
 
 def main():
     parser = argparse.ArgumentParser(description="Run Inference on a trained model")
@@ -39,14 +27,14 @@ def main():
     try:
         import torch_xla.core.xla_model as xm
         device = xm.xla_device()
-        print(f"✅ TPU Detected: {device}")
+        logger.info(f"✅ TPU Detected: {device}")
     except ImportError:
         if torch.cuda.is_available():
             device = "cuda"
-            print(f"✅ GPU Detected: {torch.cuda.get_device_name(0)}")
+            logger.info(f"✅ GPU Detected: {torch.cuda.get_device_name(0)}")
         else:
             device = "cpu"
-            print("⚠️ No GPU detected. CPU fallback mode will be engaged.")
+            logger.warning("⚠️ No GPU detected. CPU fallback mode will be engaged.")
 
     # Determine scale from checkpoint path
     scale = os.path.basename(os.path.normpath(args.checkpoint))
@@ -57,19 +45,41 @@ def main():
         with open(config_path, "r") as f:
             scaling_configs = yaml.safe_load(f)["scales"]
     except FileNotFoundError:
-        print(f"Error: Could not find {config_path}.")
+        logger.error(f"Error: Could not find {config_path}.")
         return
 
     if scale not in scaling_configs:
-        print(f"Warning: Scale '{scale}' not found in scaling.yaml. Assuming 100M defaults for architecture.")
+        logger.warning(f"Warning: Scale '{scale}' not found in scaling.yaml. Assuming 100M defaults for architecture.")
         preset = scaling_configs["100M"]
     else:
         preset = scaling_configs[scale]
 
-    print(f"Initializing architecture for scale: {scale} in Baseline Mode")
+    logger.info(f"Initializing architecture for scale: {scale} in Baseline Mode")
     UpFlameAGOUnifiedConfig.USE_ADVANCED = False
+
+    # 2. Setup Tokenizer
+    tokenizer_path = os.path.join(os.path.dirname(__file__), "..", "tokenizer", "upflame_ago_tokenizer.model")
+    if os.path.exists(tokenizer_path):
+        import sentencepiece as spm
+        class SPMTokenizerWrap:
+            def __init__(self, spm_model_path):
+                self.sp = spm.SentencePieceProcessor()
+                self.sp.load(spm_model_path)
+                self.vocab_size = self.sp.vocab_size()
+            def encode(self, text, add_special_tokens=False):
+                return self.sp.encode(text)
+            def decode(self, token_ids):
+                return self.sp.decode(token_ids)
+        logger.info("Loading native SentencePiece tokenizer...")
+        tokenizer = SPMTokenizerWrap(tokenizer_path)
+        vocab_size = tokenizer.vocab_size
+    else:
+        logger.warning(f"Native tokenizer not found at {tokenizer_path}. Falling back to GPT-2 tokenizer.")
+        tokenizer = AutoTokenizer.from_pretrained("gpt2")
+        vocab_size = tokenizer.vocab_size
+
     model_config = UpFlameAGOUnifiedConfig(
-        vocab_size=32000,
+        vocab_size=vocab_size,
         hidden_size=preset["hidden_size"],
         num_hidden_layers=preset["layers"],
         num_attention_heads=preset["heads"],
@@ -79,28 +89,29 @@ def main():
 
     model = UnifiedTransformer(model_config).to(device)
 
-    # 2. Load Checkpoint
+    # 3. Load Checkpoint
     ckpt_file = os.path.join(args.checkpoint, "model.pt")
     try:
-        print(f"Loading checkpoint from {ckpt_file}...")
+        logger.info(f"Loading checkpoint from {ckpt_file}...")
         state_dict = torch.load(ckpt_file, map_location=device)
         model.load_state_dict(state_dict)
-        print("✅ Checkpoint loaded successfully.")
+        logger.info("✅ Checkpoint loaded successfully.")
     except FileNotFoundError:
-        print(f"❌ Error: Checkpoint file not found at {ckpt_file}")
+        logger.error(f"❌ Error: Checkpoint file not found at {ckpt_file}")
         return
     except Exception as e:
-        print(f"❌ Error loading checkpoint: {e}")
+        logger.error(f"❌ Error loading checkpoint: {e}")
         return
 
     model.eval()
-    tokenizer = DummyTokenizer()
 
-    # 3. Generate
-    print(f"\nPrompt: '{args.prompt}'")
-    print("Generating...")
+    # 4. Generate
+    logger.info(f"Prompt: '{args.prompt}'")
+    logger.info("Generating...")
     
-    input_ids = torch.tensor([tokenizer.encode(args.prompt)], dtype=torch.long).to(device)
+    enc = tokenizer.encode(args.prompt, add_special_tokens=False)
+    input_tokens = enc['input_ids'] if isinstance(enc, dict) else enc
+    input_ids = torch.tensor([input_tokens], dtype=torch.long).to(device)
 
     for _ in range(args.max_new_tokens):
         with torch.no_grad():
@@ -117,8 +128,13 @@ def main():
             
             input_ids = torch.cat((input_ids, next_token), dim=1)
 
-    generated_text = tokenizer.decode(input_ids[0].tolist())
-    print(f"\nFinal Output: \n{generated_text}")
+    try:
+        generated_text = tokenizer.decode(input_ids[0].tolist(), skip_special_tokens=True)
+    except TypeError:
+        # Fallback if sentencepiece decode doesn't accept skip_special_tokens param directly
+        generated_text = tokenizer.decode(input_ids[0].tolist())
+
+    logger.info(f"\nFinal Output: \n{generated_text}")
 
 if __name__ == "__main__":
     main()
