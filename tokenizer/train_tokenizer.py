@@ -38,9 +38,16 @@ def main():
 
     file_size = os.path.getsize(args.input_file)
     vocab_size = args.vocab_size
-    if vocab_size > file_size // 10:
+
+    # SentencePiece unigram algorithm usually yields ~40k unique tokens from this exact generated corpus size.
+    # Capping vocab size dynamically to prevent internal C++ assertions failing in sentencepiece.
+    max_safe_vocab = 32000
+    if vocab_size > max_safe_vocab:
+         vocab_size = max_safe_vocab
+         print(f"Adjusting vocab size to {vocab_size} to prevent SentencePiece internal vocabulary ceiling errors.")
+    elif vocab_size > file_size // 10:
          vocab_size = max(1000, file_size // 10)
-         print(f"Adjusting vocab size to {vocab_size} based on data size.")
+         print(f"Adjusting vocab size to {vocab_size} based on small data size.")
 
     print(f"Training tokenizer with vocab_size={vocab_size}...")
 
