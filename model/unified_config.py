@@ -25,6 +25,8 @@ class UpFlameAGOUnifiedConfig(PretrainedConfig):
         tie_word_embeddings=False,
         rope_theta=10000.0,
         rope_scaling=None,
+        attention_bias=False,
+        attention_dropout=0.0,
         # MoE
         use_moe=True,
         num_experts=16,
@@ -58,6 +60,8 @@ class UpFlameAGOUnifiedConfig(PretrainedConfig):
         self.use_cache = use_cache
         self.rope_theta = rope_theta
         self.rope_scaling = rope_scaling
+        self.attention_bias = attention_bias
+        self.attention_dropout = attention_dropout
 
         self.use_moe = use_moe
         self.num_experts = num_experts
