@@ -134,7 +134,10 @@ def main():
     )
 
     logger.info("Initializing UnifiedTransformer in Baseline Mode...")
-    model = UnifiedTransformer(model_config).to(device)
+    model = UnifiedTransformer(model_config)
+    logger.info("Transferring model to device...")
+    model = model.to(device)
+    logger.info("Model transferred to device successfully.")
 
     if args.validate_only:
         logger.info("Validation Mode: Running single forward pass...")
@@ -167,7 +170,7 @@ def main():
     # 5. Setup Data Pipeline
 
     try:
-        logger.info("Loading wikitext-2 (language) and CodeAlpaca (coding) datasets...")
+        logger.info("Initiating Dataset Load (This may take a few minutes in Colab to download from HuggingFace)...")
         # For interleave_datasets, columns must match.
         # So we map the code dataset to have a single 'text' column just like wikitext.
         def format_code(example):

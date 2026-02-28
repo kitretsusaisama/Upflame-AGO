@@ -43,7 +43,10 @@ class UnifiedTransformer(PreTrainedModel):
         self.memory_write_head = MemoryWriteHead(config)
 
         self.gradient_checkpointing = False
+
+        logger.info(f"Initializing weights for {config.num_hidden_layers} layers...")
         self.post_init()
+        logger.info(f"Weights initialized successfully.")
 
         logger.info(f"Initialized UnifiedTransformer: {self.vocab_size} vocab | {config.num_hidden_layers} layers | padding_idx {self.padding_idx}")
 
