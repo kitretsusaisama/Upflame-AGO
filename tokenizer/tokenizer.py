@@ -23,8 +23,21 @@ class UpFlameAGOTokenizer:
         self.hf_tokenizer = None
 
         if model_path is None:
-            # Resolve default path relative to this file
-            model_path = os.path.join(os.path.dirname(__file__), "upflame_ago_tokenizer.model")
+            # Resolve default path safely by checking relative to this file first, then relative to Current Working Directory.
+            # This handles Google Colab and nested Git contexts robustly.
+            file_relative_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "upflame_ago_tokenizer.model"))
+            cwd_relative_path = os.path.abspath(os.path.join(os.getcwd(), "tokenizer", "upflame_ago_tokenizer.model"))
+
+            if os.path.exists(file_relative_path):
+                model_path = file_relative_path
+            elif os.path.exists(cwd_relative_path):
+                model_path = cwd_relative_path
+            else:
+                # Default back to whatever was provided
+                model_path = file_relative_path
+
+        # Resolve any generic ".." paths strictly to absolute paths so error logs are clean
+        model_path = os.path.abspath(model_path)
 
         if os.path.exists(model_path):
             try:

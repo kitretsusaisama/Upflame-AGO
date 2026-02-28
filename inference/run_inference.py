@@ -60,8 +60,8 @@ def main():
     UpFlameAGOUnifiedConfig.USE_ADVANCED = False
 
     # 2. Setup Tokenizer
-    tokenizer_path = os.path.join(os.path.dirname(__file__), "..", "tokenizer", "upflame_ago_tokenizer.model")
-    tokenizer = UpFlameAGOTokenizer(model_path=tokenizer_path)
+    # We pass None here to allow UpFlameAGOTokenizer to safely resolve the path using CWD and __file__ bounds.
+    tokenizer = UpFlameAGOTokenizer(model_path=None)
     vocab_size = tokenizer.vocab_size
 
     model_config = UpFlameAGOUnifiedConfig(
