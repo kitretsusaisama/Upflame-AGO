@@ -170,25 +170,45 @@ def main():
     # 5. Setup Data Pipeline
 
     try:
-        logger.info("Initiating Dataset Load (This may take a few minutes in Colab to download from HuggingFace)...")
-        # For interleave_datasets, columns must match.
-        # So we map the code dataset to have a single 'text' column just like wikitext.
-        def format_code(example):
-            instruction = example.get('instruction', '')
-            inp = example.get('input', '')
-            output = example.get('output', '')
-            parts = [instruction, inp, output]
+        logger.info("Initiating Massive Multi-Domain Dataset Load (This may take several minutes)...")
+
+        # Dynamic mapper to standardize any arbitrary dataset schema into a single "text" column
+        def robust_format(example):
+            parts = []
+            # Check common text fields
+            if 'text' in example: parts.append(example['text'])
+            # Check common instruction/reasoning/RL fields
+            for key in ['system', 'instruction', 'input', 'prompt', 'conversations', 'question', 'response', 'output', 'answer', 'completion']:
+                if key in example and example[key]:
+                    parts.append(str(example[key]))
             return {"text": "\n".join([str(p).strip() for p in parts if p])}
 
-        lang_dataset = load_dataset("wikitext", "wikitext-2-v1", split="train")
-        code_dataset = load_dataset("HuggingFaceH4/CodeAlpaca_20K", split="train")
-        code_dataset = code_dataset.map(format_code, remove_columns=code_dataset.column_names)
+        # 1. Salesforce/wikitext variants
+        ds_wiki_103_raw = load_dataset("Salesforce/wikitext", "wikitext-103-raw-v1", split="train")
+        ds_wiki_103 = load_dataset("Salesforce/wikitext", "wikitext-103-v1", split="train")
+        ds_wiki_2_raw = load_dataset("Salesforce/wikitext", "wikitext-2-raw-v1", split="train")
 
-        # Interleave datasets to mix language and code
-        dataset = interleave_datasets([lang_dataset, code_dataset])
-        logger.info("✅ Datasets loaded successfully.")
+        # 2. Reasoning and Coding variants
+        ds_qwen_reasoning = load_dataset("LocoreMind/qwen3.5-27b-cli-reasoning-3632x", split="train")
+        ds_opus_reasoning = load_dataset("nohurry/Opus-4.6-Reasoning-3000x-filtered", split="train")
+        ds_nemotron_coding = load_dataset("nvidia/Nemotron-RL-coding-competitive_coding", split="train")
+
+        datasets_list = [
+            ds_wiki_103_raw, ds_wiki_103, ds_wiki_2_raw,
+            ds_qwen_reasoning, ds_opus_reasoning, ds_nemotron_coding
+        ]
+
+        logger.info("Normalizing dataset schemas...")
+        normalized_datasets = []
+        for ds in datasets_list:
+            ds = ds.map(robust_format, remove_columns=ds.column_names)
+            normalized_datasets.append(ds)
+
+        logger.info("Interleaving multi-domain datasets...")
+        dataset = interleave_datasets(normalized_datasets)
+        logger.info("✅ Massive Datasets loaded and interleaved successfully.")
     except Exception as e:
-        logger.error(f"Failed to load datasets: {e}. Attempting fallback to synthetic data.")
+        logger.error(f"❌ Failed to load datasets: {e}. Attempting fallback to synthetic data.")
         # Fallback dataset for absolute resilience (MNC grade)
         dataset = [{"text": "Synthetic fallback data point to ensure training does not crash."} for _ in range(1000)]
 
