@@ -1,0 +1,26 @@
+scales:
+  100M:
+    layers: 12
+    hidden_size: 768
+    heads: 12
+    context: 512
+  300M:
+    layers: 18
+    hidden_size: 1024
+    heads: 16
+    context: 1024
+  700M:
+    layers: 24
+    hidden_size: 1536
+    heads: 16
+    context: 1024
+  1B:
+    layers: 24
+    hidden_size: 2048
+    heads: 16
+    context: 1024
+  2B:
+    layers: 30
+    hidden_size: 2560
+    heads: 20
+    context: 1024
