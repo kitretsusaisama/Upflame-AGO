@@ -8,10 +8,11 @@ import yaml
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import logging
-from transformers import AutoTokenizer
+import math
 
 from model.unified_config import UpFlameAGOUnifiedConfig
 from model.unified_transformer import UnifiedTransformer
+from tokenizer.tokenizer import UpFlameAGOTokenizer
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
@@ -22,6 +23,7 @@ def main():
     parser.add_argument("--prompt", type=str, default="The future of open source AI is", help="Prompt to start generation")
     parser.add_argument("--max_new_tokens", type=int, default=20, help="Number of tokens to generate")
     parser.add_argument("--temperature", type=float, default=0.7, help="Generation temperature")
+    parser.add_argument("--evaluate", action="store_true", help="Run precise MNC-grade perplexity evaluation on the prompt instead of generation")
     args = parser.parse_args()
 
     try:
@@ -59,24 +61,8 @@ def main():
 
     # 2. Setup Tokenizer
     tokenizer_path = os.path.join(os.path.dirname(__file__), "..", "tokenizer", "upflame_ago_tokenizer.model")
-    if os.path.exists(tokenizer_path):
-        import sentencepiece as spm
-        class SPMTokenizerWrap:
-            def __init__(self, spm_model_path):
-                self.sp = spm.SentencePieceProcessor()
-                self.sp.load(spm_model_path)
-                self.vocab_size = self.sp.vocab_size()
-            def encode(self, text, add_special_tokens=False):
-                return self.sp.encode(text)
-            def decode(self, token_ids):
-                return self.sp.decode(token_ids)
-        logger.info("Loading native SentencePiece tokenizer...")
-        tokenizer = SPMTokenizerWrap(tokenizer_path)
-        vocab_size = tokenizer.vocab_size
-    else:
-        logger.warning(f"Native tokenizer not found at {tokenizer_path}. Falling back to GPT-2 tokenizer.")
-        tokenizer = AutoTokenizer.from_pretrained("gpt2")
-        vocab_size = tokenizer.vocab_size
+    tokenizer = UpFlameAGOTokenizer(model_path=tokenizer_path)
+    vocab_size = tokenizer.vocab_size
 
     model_config = UpFlameAGOUnifiedConfig(
         vocab_size=vocab_size,
@@ -105,36 +91,58 @@ def main():
 
     model.eval()
 
-    # 4. Generate
+    # 4. Execute (Generation or Evaluation)
     logger.info(f"Prompt: '{args.prompt}'")
-    logger.info("Generating...")
     
     enc = tokenizer.encode(args.prompt, add_special_tokens=False)
     input_tokens = enc['input_ids'] if isinstance(enc, dict) else enc
     input_ids = torch.tensor([input_tokens], dtype=torch.long).to(device)
 
-    for _ in range(args.max_new_tokens):
+    if args.evaluate:
+        logger.info("Running MNC-Grade precise perplexity evaluation...")
+        if input_ids.size(1) < 2:
+            logger.error("❌ Evaluation requires a prompt with at least 2 tokens to compute valid loss.")
+            return
+
         with torch.no_grad():
             outputs = model(input_ids=input_ids, return_dict=True)
-            next_token_logits = outputs.logits[:, -1, :] / args.temperature
+            shift_logits = outputs.logits[..., :-1, :].contiguous()
+            shift_labels = input_ids[..., 1:].contiguous()
             
-            # Simple Top-K
-            top_k = 40
-            v, _ = torch.topk(next_token_logits, top_k)
-            next_token_logits[next_token_logits < v[:, [-1]]] = -float('Inf')
+            loss_fct = torch.nn.CrossEntropyLoss()
+            loss = loss_fct(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
+            perplexity = math.exp(loss.item())
             
-            probs = torch.nn.functional.softmax(next_token_logits, dim=-1)
-            next_token = torch.multinomial(probs, num_samples=1)
-            
-            input_ids = torch.cat((input_ids, next_token), dim=1)
+        logger.info("-" * 50)
+        logger.info(f"📊 Evaluation Results:")
+        logger.info(f"Cross-Entropy Loss : {loss.item():.4f}")
+        logger.info(f"Exact Perplexity   : {perplexity:.4f}")
+        logger.info("-" * 50)
 
-    try:
-        generated_text = tokenizer.decode(input_ids[0].tolist(), skip_special_tokens=True)
-    except TypeError:
-        # Fallback if sentencepiece decode doesn't accept skip_special_tokens param directly
-        generated_text = tokenizer.decode(input_ids[0].tolist())
+    else:
+        logger.info("Generating...")
+        for _ in range(args.max_new_tokens):
+            with torch.no_grad():
+                outputs = model(input_ids=input_ids, return_dict=True)
+                next_token_logits = outputs.logits[:, -1, :] / args.temperature
 
-    logger.info(f"\nFinal Output: \n{generated_text}")
+                # Simple Top-K
+                top_k = 40
+                v, _ = torch.topk(next_token_logits, top_k)
+                next_token_logits[next_token_logits < v[:, [-1]]] = -float('Inf')
+
+                probs = torch.nn.functional.softmax(next_token_logits, dim=-1)
+                next_token = torch.multinomial(probs, num_samples=1)
+
+                input_ids = torch.cat((input_ids, next_token), dim=1)
+
+        try:
+            generated_text = tokenizer.decode(input_ids[0].tolist(), skip_special_tokens=True)
+        except TypeError:
+            # Fallback if sentencepiece decode doesn't accept skip_special_tokens param directly
+            generated_text = tokenizer.decode(input_ids[0].tolist())
+
+        logger.info(f"\nFinal Output: \n{generated_text}")
 
 if __name__ == "__main__":
     main()

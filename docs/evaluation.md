@@ -22,6 +22,17 @@ python inference/run_inference.py \
   --temperature 0.7
 ```
 
+### Precise Prompt Perplexity Evaluation
+
+To precisely evaluate the exact perplexity and cross-entropy loss of the model on a given input prompt (MNC-grade self-evaluation), append the `--evaluate` flag:
+
+```bash
+python inference/run_inference.py \
+  --checkpoint checkpoints/100M \
+  --prompt "The future of open source AI is a collaborative and transparent ecosystem." \
+  --evaluate
+```
+
 ## Full Model Evaluation via Harness
 
 For automated metrics on language tasks (e.g. WikiText, Lambada) or coding tasks (e.g. HumanEval), you can run:

@@ -15,7 +15,7 @@ from datasets import load_dataset, interleave_datasets
 from torch.utils.data import DataLoader, IterableDataset
 
 import logging
-from transformers import AutoTokenizer
+from tokenizer.tokenizer import UpFlameAGOTokenizer
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
@@ -115,24 +115,8 @@ def main():
 
     # 2. Setup Tokenizer FIRST to get correct vocab_size
     tokenizer_path = os.path.join(os.path.dirname(__file__), "..", "tokenizer", "upflame_ago_tokenizer.model")
-    if os.path.exists(tokenizer_path):
-        import sentencepiece as spm
-        class SPMTokenizerWrap:
-            def __init__(self, spm_model_path):
-                self.sp = spm.SentencePieceProcessor()
-                self.sp.load(spm_model_path)
-                self.eos_token_id = self.sp.eos_id()
-                self.vocab_size = self.sp.vocab_size()
-            def encode(self, text, add_special_tokens=False):
-                return self.sp.encode(text)
-        logger.info("Loading native SentencePiece tokenizer...")
-        tokenizer = SPMTokenizerWrap(tokenizer_path)
-        vocab_size = tokenizer.vocab_size
-    else:
-        logger.warning(f"Native tokenizer not found at {tokenizer_path}. Falling back to GPT-2 tokenizer.")
-        tokenizer = AutoTokenizer.from_pretrained("gpt2")
-        tokenizer.pad_token = tokenizer.eos_token
-        vocab_size = tokenizer.vocab_size
+    tokenizer = UpFlameAGOTokenizer(model_path=tokenizer_path)
+    vocab_size = tokenizer.vocab_size
 
     
     # 3. Initialize Model Config (Disabling Advanced Features for Week 1 Colab)
