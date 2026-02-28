@@ -47,6 +47,7 @@ ensure_package("transformers")
 ensure_package("datasets")
 ensure_package("sentencepiece")
 ensure_package("accelerate")
+ensure_package("pyyaml") # required for reading scaling configs
 
 # Optional package for 8-bit optimization
 try:
@@ -92,7 +93,18 @@ For stable Colab training, we must disable heavy architectural features like Mix
 
 ---
 
-## 4. Progressive Training Execution
+## 4. Train the MNC-Grade Tokenizer (Pre-Training Step)
+
+Before starting language model training, you must train your own native tokenizer to avoid falling back to standard, unoptimized HuggingFace models (like `gpt2`). This generates the `upflame_ago_tokenizer.model` file.
+
+```bash
+!python tokenizer/train_tokenizer.py
+```
+*This script will safely generate synthetic token data and build an exact vocabulary optimized for the UpFlame-AGO architecture.*
+
+---
+
+## 5. Progressive Training Execution
 
 We provide a lightweight training entry point, `training/train_small.py`, designed specifically for this progressive scaling roadmap.
 
@@ -127,7 +139,7 @@ This is near the limit of the T4 GPU. Training will be slower but should remain 
 
 ---
 
-## 5. Validating 2B Architecture
+## 6. Validating 2B Architecture
 
 You cannot perform full training on a 2B model using a standard 15GB T4 GPU. However, you must validate that the architecture compiles and passes a forward pass without OOM (Out of Memory) errors.
 
@@ -140,7 +152,7 @@ Run the validation command:
 
 ---
 
-## 6. Running Inference & Evaluation
+## 7. Running Inference & Evaluation
 
 To test your trained models, use the dedicated inference script. Point it to the directory of your saved checkpoint.
 
@@ -158,7 +170,7 @@ To test your trained models, use the dedicated inference script. Point it to the
 
 ---
 
-## 7. CPU-Only Fallback Mode
+## 8. CPU-Only Fallback Mode
 
 If you run out of Colab compute units and drop to a CPU runtime, the system can gracefully adapt without crashing.
 
@@ -175,7 +187,7 @@ Append the `--cpu_mode` flag to your command:
 
 ---
 
-## 8. Analyzing Results
+## 9. Analyzing Results
 
 To visualize your scaling laws (Loss vs. Steps / Model Size):
 
@@ -186,7 +198,7 @@ To visualize your scaling laws (Loss vs. Steps / Model Size):
 
 ---
 
-## 9. Common Colab Errors & Fixes
+## 10. Common Colab Errors & Fixes
 
 | Error | Cause | Fix |
 | :--- | :--- | :--- |
@@ -197,7 +209,7 @@ To visualize your scaling laws (Loss vs. Steps / Model Size):
 
 ---
 
-## 10. Suggested Refactoring Checklist (Pre-Colab)
+## 11. Suggested Refactoring Checklist (Pre-Colab)
 
 Before starting, ensure your repository has the following files (or create them based on the provided specifications):
 1.  `training/train_small.py`: The lightweight CLI entry point.
