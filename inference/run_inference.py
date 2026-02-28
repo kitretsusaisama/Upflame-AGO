@@ -40,7 +40,7 @@ def main():
 
     # Determine scale from checkpoint path
     scale = os.path.basename(os.path.normpath(args.checkpoint))
-    
+
     # 1. Load Config
     config_path = os.path.join(os.path.dirname(__file__), "..", "configs", "scaling.yaml")
     try:

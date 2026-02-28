@@ -55,7 +55,7 @@ class TokenizedDataset(IterableDataset):
             eos = self.tokenizer.eos_token_id if self.tokenizer.eos_token_id is not None else 2
             tokens.append(eos)
             buffer.extend(tokens)
-            
+
             while len(buffer) >= self.max_seq_len + 1:
                 chunk = buffer[:self.max_seq_len + 1]
                 buffer = buffer[self.max_seq_len + 1:]
@@ -126,16 +126,12 @@ def main():
         num_hidden_layers=preset["layers"],
         num_attention_heads=preset["heads"],
         num_key_value_heads=preset["heads"] // 2 if preset["heads"] % 2 == 0 else preset["heads"], # GQA or standard
-        max_position_embeddings=context_len,
-        use_moe=False, # DISABLED FOR COLAB BASELINE
-        use_infini_attention=False, # DISABLED FOR COLAB BASELINE
-        use_vector_memory=False, # DISABLED FOR COLAB BASELINE
-        use_world_state=False # DISABLED FOR COLAB BASELINE
+        max_position_embeddings=context_len
     )
 
     logger.info("Initializing UnifiedTransformer in Baseline Mode...")
     model = UnifiedTransformer(model_config).to(device)
-    
+
     if args.validate_only:
         logger.info("Validation Mode: Running single forward pass...")
         dummy_input = torch.randint(0, model_config.vocab_size, (1, 128)).to(device)
@@ -220,10 +216,10 @@ def main():
     logger.info(f"Starting training for {args.max_steps} steps...")
     scaler = torch.cuda.amp.GradScaler(enabled=(device == "cuda"))
     model.train()
-    
+
     logs = []
     start_time = time.time()
-    
+
     # Ensure checkpoint and log directories exist
     os.makedirs(f"checkpoints/{args.scale}", exist_ok=True)
     os.makedirs("logs", exist_ok=True)
