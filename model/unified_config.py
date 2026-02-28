@@ -2,6 +2,9 @@ from transformers import PretrainedConfig
 
 class UpFlameAGOUnifiedConfig(PretrainedConfig):
     model_type = "upflame_ago_unified"
+    # Global toggle for disabling advanced components (useful for Colab baselines)
+    USE_ADVANCED = True
+
 
     # Global toggle for disabling advanced components (useful for Colab baselines)
     USE_ADVANCED = True
