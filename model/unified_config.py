@@ -2,6 +2,9 @@ from transformers import PretrainedConfig
 
 class UpFlameAGOUnifiedConfig(PretrainedConfig):
     model_type = "upflame_ago_unified"
+    # Global toggle for disabling advanced components (useful for Colab baselines)
+    USE_ADVANCED = True
+
 
     def __init__(
         self,
@@ -36,6 +39,12 @@ class UpFlameAGOUnifiedConfig(PretrainedConfig):
         use_world_state=True,
         **kwargs,
     ):
+        # Override advanced features if global toggle is disabled
+        if not self.__class__.USE_ADVANCED:
+            use_moe = False
+            use_infini_attention = False
+            use_vector_memory = False
+            use_world_state = False
         self.vocab_size = vocab_size
         self.max_position_embeddings = max_position_embeddings
         self.hidden_size = hidden_size
