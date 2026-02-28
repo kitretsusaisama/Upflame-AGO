@@ -58,14 +58,28 @@ except ImportError:
 ```
 
 ### Step 3: Verify Hardware
-Confirm your GPU is accessible.
+Confirm your hardware is accessible. This logic correctly identifies TPUs or GPUs and falls back to CPU natively.
 
 ```python
 import torch
-if torch.cuda.is_available():
-    print(f"✅ GPU Detected: {torch.cuda.get_device_name(0)}")
-else:
-    print("⚠️ No GPU detected. CPU fallback mode will be engaged.")
+
+def get_device():
+    try:
+        import torch_xla.core.xla_model as xm
+        device = xm.xla_device()
+        print(f"✅ TPU Detected: {device}")
+        return "tpu"
+    except ImportError:
+        pass
+
+    if torch.cuda.is_available():
+        print(f"✅ GPU Detected: {torch.cuda.get_device_name(0)}")
+        return "cuda"
+    else:
+        print("⚠️ No GPU detected. CPU fallback mode will be engaged.")
+        return "cpu"
+
+get_device()
 ```
 
 ---
@@ -86,7 +100,7 @@ We provide a lightweight training entry point, `training/train_small.py`, design
 Run a quick test to ensure the data pipeline and model compile correctly.
 
 ```bash
-!python training/train_small.py --scale 100M
+!python training/train_small.py --scale 100M --use_wandb
 ```
 *Outputs checkpoint to: `checkpoints/100M/`*
 
@@ -94,21 +108,21 @@ Run a quick test to ensure the data pipeline and model compile correctly.
 Increase capacity. The script will automatically handle gradient accumulation.
 
 ```bash
-!python training/train_small.py --scale 300M
+!python training/train_small.py --scale 300M --use_wandb
 ```
 
 ### Day 3-4: Scale to 700M
 At this scale, gradient checkpointing and mixed precision (bf16/fp16) become strictly necessary.
 
 ```bash
-!python training/train_small.py --scale 700M
+!python training/train_small.py --scale 700M --use_wandb
 ```
 
 ### Day 5: Scale to 1B
 This is near the limit of the T4 GPU. Training will be slower but should remain stable.
 
 ```bash
-!python training/train_small.py --scale 1B
+!python training/train_small.py --scale 1B --use_wandb
 ```
 
 ---
@@ -126,13 +140,20 @@ Run the validation command:
 
 ---
 
-## 6. Running Inference
+## 6. Running Inference & Evaluation
 
 To test your trained models, use the dedicated inference script. Point it to the directory of your saved checkpoint.
 
+**For Text Generation:**
 ```bash
 # Example: Running inference on the 300M model
 !python inference/run_inference.py --checkpoint checkpoints/300M --prompt "The future of open source AI is"
+```
+
+**For MNC-Grade Precise Evaluation:**
+```bash
+# Example: Running exact perplexity calculation on a prompt
+!python inference/run_inference.py --checkpoint checkpoints/300M --prompt "The future of open source AI is" --evaluate
 ```
 
 ---
@@ -141,10 +162,10 @@ To test your trained models, use the dedicated inference script. Point it to the
 
 If you run out of Colab compute units and drop to a CPU runtime, the system can gracefully adapt without crashing.
 
-Append the `--cpu_mode True` flag to your command:
+Append the `--cpu_mode` flag to your command:
 
 ```bash
-!python training/train_small.py --scale 100M --cpu_mode True
+!python training/train_small.py --scale 100M --cpu_mode
 ```
 **What this does internally:**
 *   Forces the model to a smaller context window (512 tokens).
@@ -161,7 +182,7 @@ To visualize your scaling laws (Loss vs. Steps / Model Size):
 ```bash
 !python training/plot_scaling.py --log_dir logs/
 ```
-*This script reads the JSON logs generated during training and outputs a matplotlib graph.*
+*This script reads the JSON logs generated during training and outputs a matplotlib graph.* *(Note: We also natively integrate with Weights & Biases via the `--use_wandb` flag).*
 
 ---
 

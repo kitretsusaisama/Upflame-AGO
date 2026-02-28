@@ -126,7 +126,11 @@ def main():
         num_hidden_layers=preset["layers"],
         num_attention_heads=preset["heads"],
         num_key_value_heads=preset["heads"] // 2 if preset["heads"] % 2 == 0 else preset["heads"], # GQA or standard
-        max_position_embeddings=context_len
+        max_position_embeddings=context_len,
+        use_moe=False, # DISABLED FOR COLAB BASELINE
+        use_infini_attention=False, # DISABLED FOR COLAB BASELINE
+        use_vector_memory=False, # DISABLED FOR COLAB BASELINE
+        use_world_state=False # DISABLED FOR COLAB BASELINE
     )
 
     logger.info("Initializing UnifiedTransformer in Baseline Mode...")
